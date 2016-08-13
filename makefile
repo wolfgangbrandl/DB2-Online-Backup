@@ -47,19 +47,14 @@ dropdb:
 		db2 drop database $(DATASOURCE)
 createtable:
 		db2 connect to $(DATASOURCE) 
-		db2 "create table db2admin.T000001 (\
-			id integer not null generated always as identity (start with 1 increment by 1),\
-			pid integer not null,\
+		db2 "create table TEST.T000001 (\
+			ind integer not null generated always as identity (start with 1 increment by 1),\
+			pid integer not null default 1,\
 			date date not null default current date,\
 			time time not null default current time,\
 			object varchar(255) ,\
-			primary key (pid,date,time))"
-		db2 "create alias TEST.REPTEST for  db2admin.T000001"
-		db2 "create table db2admin.T000002 (\
-			ind integer not null generated always as identity (start with 1 increment by 1),\
-			object varchar(255) ,\
 			primary key (ind))"
-		db2 "create alias TEST.ASTRO for  db2admin.T000001"
+		db2 "create alias DB2ADMIN.ASTRO for TEST.T000001"
 		db2 terminate
 getenvironment:
 		db2level

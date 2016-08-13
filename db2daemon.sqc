@@ -22,6 +22,47 @@ EXEC SQL BEGIN DECLARE SECTION;
 EXEC SQL END DECLARE SECTION;
 
 EXEC SQL INCLUDE SQLCA;
+const char * astroobjectslist[] = {
+"Mond",
+"Merkur",
+"Venus",
+"Erde",
+"Mars",
+"Jupiter",
+"Saturn",
+"Uranus",
+"Neptun",
+"Pluto",
+"Deneb",
+"Rigel",
+"Betelgeuse",
+"Beta Crucis",
+"Antares",
+"Beta Centauri",
+"Alpha Crucis",
+"Spica",
+"Canopus",
+"Achenar",
+"Capella",
+"Arcturus",
+"Aldebaran",
+"Vega",
+"Pollux",
+"Sirius",
+"Formalhaut",
+"Altair",
+"Procyon",
+"Alpha Centauri",
+"Sirius",
+"Procyon",
+"Alpha Centauri",
+"Epsilon Eridani",
+"Epsilon Indi",
+"61 Cygni",
+"Lalande 21135",
+"Sigma 2398",
+""
+};
 
 /* ------------------------------------------------------------ */
 static void skeleton_daemon()
@@ -87,13 +128,13 @@ static void INFO_Row (const char * pszString)
 /* ------------------------------------------------------------ */
 int main (const int iArgs, const char * ppszArgs[])
 {
-  int  fall;
-  int j;
-  int ind;
-  int count;
-  char *db;
-  char *user;
-  char *pw;
+  int         j=0x00;
+  int         i=0x00;
+  int         ind=0x00;
+  int         count=0x00;
+  char      * db=0x00;
+  char      * user=0x00;
+  char      * pw=0x00;
 
   if (iArgs < 2) {
     printf("db2daemon <database name>\n");
@@ -102,64 +143,58 @@ int main (const int iArgs, const char * ppszArgs[])
     strcpy (dbase  , (iArgs > 1) ? ppszArgs[1] : "");
   }
   skeleton_daemon();
-
-  while (1) {
-    //TODO: Insert daemon code here.
-    syslog (LOG_NOTICE, "First daemon started.");
-    sleep (20);
-    break;
-  }
-
-
-
+  syslog (LOG_NOTICE, "First daemon started.");
+  pid = getpid();
   INFO_Row ("Connect");
   EXEC SQL CONNECT TO :dbase;
   if (sqlca.sqlcode) {
     printf ("CONNECT: %d\n", sqlca.sqlcode);
     exit (8);
   }
-  INFO_Row ("Insert Commited rows");
-  count = 0;
-  while (strlen(astroobjectslist1[count]) > 0) {
-    strcpy(str,astroobjectslist1[count]);
-    printf("Insert %s\n",astroobjectslist1[count]);
-    EXEC SQL INSERT INTO ASTRO (OBJECT) VALUES (:str);
-    if (sqlca.sqlcode){
-      printf ("INSERT: %d\n", sqlca.sqlcode);
-      INFO_Row ("Commit");
-      EXEC SQL rollback work;
-      INFO_Row ("DisConnect");
-      EXEC SQL CONNECT RESET;
-      exit (8);
+
+  while (1) {
+    INFO_Row ("Insert Commited rows");
+    count = 0;
+    while (strlen(astroobjectslist[count]) > 0) {
+      strcpy(str,astroobjectslist[count]);
+      printf("Insert %s\n",astroobjectslist[count]);
+      EXEC SQL INSERT INTO ASTRO (PID,OBJECT) VALUES (:pid,:str);
+      if (sqlca.sqlcode){
+        printf ("INSERT: %d\n", sqlca.sqlcode);
+        INFO_Row ("Commit");
+        EXEC SQL rollback work;
+        INFO_Row ("DisConnect");
+        EXEC SQL CONNECT RESET;
+        exit (8);
+      }
+      count++;
     }
-    count++;
-  }
-  EXEC SQL DECLARE c1 CURSOR FOR SELECT OBJECT FROM DB2ADMIN.ASTRO ;
-  if (sqlca.sqlcode)
-    printf ("Declare Cursor: %d\n", sqlca.sqlcode);
-  INFO_Row ("Open Cursor");
-  EXEC SQL OPEN c1;
-  if (sqlca.sqlcode)
-    printf ("Open Cursor: %d\n", sqlca.sqlcode);
-
-  for (i=0;i<10;i++) {
-    memset (str,0x00,sizeof(str));
-    EXEC SQL FETCH c1 INTO :str;
-    if (sqlca.sqlcode){
-      printf ("Fetch Cursor: %d\n", sqlca.sqlcode);
-      break;
-    } else {
-      printf("Row <%d>: %s\n",i,str);
+    EXEC SQL DECLARE c1 CURSOR FOR SELECT OBJECT FROM DB2ADMIN.ASTRO ;
+    if (sqlca.sqlcode)
+      printf ("Declare Cursor: %d\n", sqlca.sqlcode);
+    INFO_Row ("Open Cursor");
+    EXEC SQL OPEN c1;
+    if (sqlca.sqlcode)
+      printf ("Open Cursor: %d\n", sqlca.sqlcode);
+  
+    for (i=0;i<10;i++) {
+      memset (str,0x00,sizeof(str));
+      EXEC SQL FETCH c1 INTO :str;
+      if (sqlca.sqlcode){
+        printf ("Fetch Cursor: %d\n", sqlca.sqlcode);
+        break;
+      } else {
+        printf("Row <%d>: %s\n",i,str);
+      }
     }
+  
+    INFO_Row ("Close Cursor");
+    EXEC SQL CLOSE c1;
+  
+    INFO_Row ("Commit");
+    EXEC SQL commit work;
+
   }
-
-  INFO_Row ("Close Cursor");
-  EXEC SQL CLOSE c1;
-
-
-  INFO_Row ("Commit");
-  EXEC SQL commit work;
-
   INFO_Row ("DisConnect");
   EXEC SQL CONNECT RESET;
   if (sqlca.sqlcode != 0) {

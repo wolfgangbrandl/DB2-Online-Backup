@@ -177,9 +177,6 @@ int main (const int iArgs, const char * ppszArgs[])
       INFO_Row ("Close Cursor");
       EXEC SQL CLOSE c2;
 
-      INFO_Row ("WRITE RESUME");
-      EXEC SQL SET WRITE RESUME FOR DATABASE;
-
       INFO_Row ("commit");
       EXEC SQL commit work;
       break;
