@@ -1,0 +1,292 @@
+/* ------------------------------------------------------------ */
+/* db2-connect-memory-test: Bratengeyer Mathias                 */
+/* Software Daten Service, Vienna. 1999-10-12                   */
+/* ------------------------------------------------------------ */
+#include <sqlca.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <time.h>
+
+#include <sql.h>
+
+EXEC SQL BEGIN DECLARE SECTION;
+    char dbase [17];
+    char userid[17];
+    char passwd[17];
+    short i;
+    char str[35];
+EXEC SQL END DECLARE SECTION;
+
+EXEC SQL INCLUDE SQLCA;
+
+typedef struct LOGONREC {
+    char szDB  [17];
+    char szUser[17];
+    char szPwd [17];
+    } LOGONREC;
+const char * astroobjectslist1[] = {
+"Mond",
+"Merkur",
+"Venus",
+"Erde",
+"Mars",
+"Jupiter",
+"Saturn",
+"Uranus",
+"Neptun",
+"Pluto",
+""
+};
+const char * astroobjectslist2[] = {
+"Deneb",
+"Rigel",
+"Betelgeuse",
+"Beta Crucis",
+"Antares",
+"Beta Centauri",
+"Alpha Crucis",
+"Spica",
+"Canopus",
+"Achenar",
+"Capella",
+"Arcturus",
+"Aldebaran",
+"Vega",
+"Pollux",
+"Sirius",
+"Formalhaut",
+"Altair",
+"Procyon",
+"Alpha Centauri",
+"Sirius",
+"Procyon",
+"Alpha Centauri",
+"Epsilon Eridani",
+"Epsilon Indi",
+"61 Cygni",
+"Lalande 21135",
+"Sigma 2398",
+""
+};
+
+
+/* ------------------------------------------------------------ */
+static void INFO_Row (const char * pszString)
+{
+  printf ("%s\n", pszString);
+} /* INFO_Row */
+
+/* ------------------------------------------------------------ */
+int main (const int iArgs, const char * ppszArgs[])
+{
+  int  fall;
+  int j;
+  int ind;
+  int count;
+
+  fall    = atoi(ppszArgs[1]);
+  strcpy (dbase  , (iArgs > 2) ? ppszArgs[2] : "");
+
+  INFO_Row ("Connect");
+  EXEC SQL CONNECT TO :dbase;
+  if (sqlca.sqlcode) {
+    printf ("CONNECT: %d\n", sqlca.sqlcode);
+    exit (8);
+  }
+  switch (fall)
+  {
+    case 1: /* Insert with commit */
+      INFO_Row ("Insert Commited rows");
+      count = 0;
+      while (strlen(astroobjectslist1[count]) > 0) {
+        strcpy(str,astroobjectslist1[count]);
+        printf("Insert %s\n",astroobjectslist1[count]);
+        EXEC SQL INSERT INTO ASTRO (OBJECT) VALUES (:str);
+        if (sqlca.sqlcode){
+          printf ("INSERT: %d\n", sqlca.sqlcode);
+          INFO_Row ("Commit");
+          EXEC SQL rollback work;
+          INFO_Row ("DisConnect");
+          EXEC SQL CONNECT RESET;
+          exit (8);
+        }
+        count++;
+      }
+      EXEC SQL DECLARE c1 CURSOR FOR SELECT OBJECT FROM DB2ADMIN.ASTRO ;
+      if (sqlca.sqlcode)
+        printf ("Declare Cursor: %d\n", sqlca.sqlcode);
+      INFO_Row ("Open Cursor");
+      EXEC SQL OPEN c1;
+      if (sqlca.sqlcode)
+        printf ("Open Cursor: %d\n", sqlca.sqlcode);
+
+      for (i=0;i<10;i++) {
+        memset (str,0x00,sizeof(str));
+        EXEC SQL FETCH c1 INTO :str;
+        if (sqlca.sqlcode){
+          printf ("Fetch Cursor: %d\n", sqlca.sqlcode);
+          break;
+        } else {
+          printf("Row <%d>: %s\n",i,str);
+        }
+      }
+
+      INFO_Row ("Close Cursor");
+      EXEC SQL CLOSE c1;
+
+
+      INFO_Row ("Commit");
+      EXEC SQL commit work;
+      break;
+    case 2: /* Insert with rollback */
+      INFO_Row ("Insert rows and then rollback");
+      count = 0;
+      while (strlen(astroobjectslist2[count]) > 0) {
+        strcpy(str,astroobjectslist2[count]);
+        printf("Insert %s\n",astroobjectslist2[count]);
+        EXEC SQL INSERT INTO ASTRO (OBJECT) VALUES (:str);
+        if (sqlca.sqlcode){
+          printf ("INSERT: %d\n", sqlca.sqlcode);
+          INFO_Row ("Commit");
+          EXEC SQL rollback work;
+          INFO_Row ("DisConnect");
+          EXEC SQL CONNECT RESET;
+          exit (8);
+        }
+        count++;
+      }
+      EXEC SQL DECLARE c2 CURSOR FOR SELECT OBJECT FROM DB2ADMIN.ASTRO ;
+      if (sqlca.sqlcode)
+        printf ("Declare Cursor: %d\n", sqlca.sqlcode);
+      INFO_Row ("Open Cursor");
+      EXEC SQL OPEN c2;
+      if (sqlca.sqlcode)
+        printf ("Open Cursor: %d\n", sqlca.sqlcode);
+
+      i=1;
+      memset (str,0x00,sizeof(str));
+      EXEC SQL FETCH c2 INTO :str;
+      while (!sqlca.sqlcode) {
+        printf("Row <%d>: %s\n",i,str);
+        memset (str,0x00,sizeof(str));
+        EXEC SQL FETCH c2 INTO :str;
+        i++;
+      }
+
+      INFO_Row ("Close Cursor");
+      EXEC SQL CLOSE c2;
+
+      INFO_Row ("WRITE RESUME");
+      EXEC SQL SET WRITE RESUME FOR DATABASE;
+
+      INFO_Row ("commit");
+      EXEC SQL commit work;
+      break;
+
+    case 3:
+        INFO_Row ("Declare Cursor");
+        EXEC SQL DECLARE c3 CURSOR FOR SELECT OBJECT FROM DB2ADMIN.ASTRO with UR;
+        if (sqlca.sqlcode)
+          printf ("Declare Cursor: %d\n", sqlca.sqlcode);
+
+        INFO_Row ("Open Cursor");
+        EXEC SQL OPEN c3;
+        if (sqlca.sqlcode)
+          printf ("Open Cursor: %d\n", sqlca.sqlcode);
+
+        memset (str,0x00,sizeof(str));
+        INFO_Row ("Fetch Cursor");
+        EXEC SQL FETCH c3 INTO :str;
+        if (sqlca.sqlcode){
+          printf ("Fetch Cursor: %d\n", sqlca.sqlcode);
+          break;
+          }
+        else {
+          printf("Row <%d>: %s\n",i,str);
+          }
+        sleep (30);
+
+        INFO_Row ("Close Cursor");
+        EXEC SQL CLOSE c3;
+
+        INFO_Row ("Commit");
+        EXEC SQL commit work;
+        break;
+
+      case 4:
+        INFO_Row ("Update into DB2ADMIN.ASTRO");
+        EXEC SQL UPDATE DB2ADMIN.ASTRO SET OBJECT='BRANDL' where IND=0;
+        if (sqlca.sqlcode){
+          printf ("UPDATE: %d\n", sqlca.sqlcode);
+          EXEC SQL CONNECT RESET;
+          exit (8);
+          }
+        INFO_Row ("Commit");
+        EXEC SQL commit work;
+        break;
+
+      case 5:
+        INFO_Row ("Update into DB2ADMIN.ASTRO");
+        EXEC SQL UPDATE DB2ADMIN.ASTRO SET OBJECT='BRANDL' where IND=0;
+        if (sqlca.sqlcode){
+          printf ("UPDATE: %d\n", sqlca.sqlcode);
+          EXEC SQL CONNECT RESET;
+          exit (8);
+          }
+        sleep (5);
+        INFO_Row ("Update into DB2ADMIN.ASTRO");
+        EXEC SQL UPDATE DB2ADMIN.ASTRO SET OBJECT='BRANDL' where IND=5;
+        if (sqlca.sqlcode){
+          printf ("UPDATE: %d\n", sqlca.sqlcode);
+          EXEC SQL CONNECT RESET;
+          exit (8);
+          }
+        INFO_Row ("Commit");
+        EXEC SQL commit work;
+        break;
+
+      case 6:
+        INFO_Row ("Update into DB2ADMIN.ASTRO");
+        EXEC SQL UPDATE DB2ADMIN.ASTRO SET OBJECT='BRANDL' where IND=5;
+        if (sqlca.sqlcode){
+          printf ("UPDATE: %d\n", sqlca.sqlcode);
+          EXEC SQL CONNECT RESET;
+          exit (8);
+          }
+        sleep (5);
+        INFO_Row ("Update into DB2ADMIN.ASTRO");
+        EXEC SQL UPDATE DB2ADMIN.ASTRO SET OBJECT='BRANDL' where IND=0;
+        if (sqlca.sqlcode){
+          printf ("UPDATE: %d\n", sqlca.sqlcode);
+          EXEC SQL CONNECT RESET;
+          exit (8);
+          }
+        INFO_Row ("Commit");
+        EXEC SQL commit work;
+        break;
+
+      default:
+        printf("Case: <%d> not defined\n",fall);
+        EXEC SQL CONNECT RESET;
+        if (sqlca.sqlcode != 0) {
+          printf ("CONNECT RESET: %d\n", sqlca.sqlcode);
+          exit (8);
+          }
+        return 4;
+      }
+
+    INFO_Row ("DisConnect");
+
+    EXEC SQL CONNECT RESET;
+
+    if (sqlca.sqlcode != 0) {
+        printf ("CONNECT RESET: %d\n", sqlca.sqlcode);
+        exit (8);
+        }
+
+    return 0;
+    } /* main */
+
+/* --- eof db2lock1.c ----------------------------------------- */
+

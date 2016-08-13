@@ -1,0 +1,176 @@
+/* ------------------------------------------------------------ */
+/* db2-connect-memory-test: Bratengeyer Mathias                 */
+/* Software Daten Service, Vienna. 1999-10-12                   */
+/* ------------------------------------------------------------ */
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <signal.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <syslog.h>
+#include <sqlca.h>
+#include <string.h>
+#include <time.h>
+
+#include <sql.h>
+
+EXEC SQL BEGIN DECLARE SECTION;
+    char dbase [17];
+    short pid;
+    char str[35];
+EXEC SQL END DECLARE SECTION;
+
+EXEC SQL INCLUDE SQLCA;
+
+/* ------------------------------------------------------------ */
+static void skeleton_daemon()
+{
+  pid_t pid;
+
+  /* Fork off the parent process */
+  pid = fork();
+
+  /* An error occurred */
+  if (pid < 0)
+    exit(EXIT_FAILURE);
+
+  /* Success: Let the parent terminate */
+  if (pid > 0)
+    exit(EXIT_SUCCESS);
+
+  /* On success: The child process becomes session leader */
+  if (setsid() < 0)
+    exit(EXIT_FAILURE);
+
+  /* Catch, ignore and handle signals */
+  //TODO: Implement a working signal handler */
+  signal(SIGCHLD, SIG_IGN);
+  signal(SIGHUP, SIG_IGN);
+
+  /* Fork off for the second time*/
+  pid = fork();
+
+  /* An error occurred */
+  if (pid < 0)
+    exit(EXIT_FAILURE);
+
+  /* Success: Let the parent terminate */
+  if (pid > 0)
+    exit(EXIT_SUCCESS);
+
+  /* Set new file permissions */
+  umask(0);
+
+  /* Change the working directory to the root directory */
+  /* or another appropriated directory */
+  chdir("/");
+
+  /* Close all open file descriptors */
+  int x;
+  for (x = sysconf(_SC_OPEN_MAX); x>0; x--)
+  {
+        close (x);
+  }
+
+  /* Open the log file */
+  openlog ("db2daemon", LOG_PID, LOG_DAEMON);
+}
+
+
+/* ------------------------------------------------------------ */
+static void INFO_Row (const char * pszString)
+{
+  syslog (LOG_NOTICE, pszString);
+} /* INFO_Row */
+
+/* ------------------------------------------------------------ */
+int main (const int iArgs, const char * ppszArgs[])
+{
+  int  fall;
+  int j;
+  int ind;
+  int count;
+  char *db;
+  char *user;
+  char *pw;
+
+  if (iArgs < 2) {
+    printf("db2daemon <database name>\n");
+    exit (8);
+  } else {
+    strcpy (dbase  , (iArgs > 1) ? ppszArgs[1] : "");
+  }
+  skeleton_daemon();
+
+  while (1) {
+    //TODO: Insert daemon code here.
+    syslog (LOG_NOTICE, "First daemon started.");
+    sleep (20);
+    break;
+  }
+
+
+
+  INFO_Row ("Connect");
+  EXEC SQL CONNECT TO :dbase;
+  if (sqlca.sqlcode) {
+    printf ("CONNECT: %d\n", sqlca.sqlcode);
+    exit (8);
+  }
+  INFO_Row ("Insert Commited rows");
+  count = 0;
+  while (strlen(astroobjectslist1[count]) > 0) {
+    strcpy(str,astroobjectslist1[count]);
+    printf("Insert %s\n",astroobjectslist1[count]);
+    EXEC SQL INSERT INTO ASTRO (OBJECT) VALUES (:str);
+    if (sqlca.sqlcode){
+      printf ("INSERT: %d\n", sqlca.sqlcode);
+      INFO_Row ("Commit");
+      EXEC SQL rollback work;
+      INFO_Row ("DisConnect");
+      EXEC SQL CONNECT RESET;
+      exit (8);
+    }
+    count++;
+  }
+  EXEC SQL DECLARE c1 CURSOR FOR SELECT OBJECT FROM DB2ADMIN.ASTRO ;
+  if (sqlca.sqlcode)
+    printf ("Declare Cursor: %d\n", sqlca.sqlcode);
+  INFO_Row ("Open Cursor");
+  EXEC SQL OPEN c1;
+  if (sqlca.sqlcode)
+    printf ("Open Cursor: %d\n", sqlca.sqlcode);
+
+  for (i=0;i<10;i++) {
+    memset (str,0x00,sizeof(str));
+    EXEC SQL FETCH c1 INTO :str;
+    if (sqlca.sqlcode){
+      printf ("Fetch Cursor: %d\n", sqlca.sqlcode);
+      break;
+    } else {
+      printf("Row <%d>: %s\n",i,str);
+    }
+  }
+
+  INFO_Row ("Close Cursor");
+  EXEC SQL CLOSE c1;
+
+
+  INFO_Row ("Commit");
+  EXEC SQL commit work;
+
+  INFO_Row ("DisConnect");
+  EXEC SQL CONNECT RESET;
+  if (sqlca.sqlcode != 0) {
+    syslog (LOG_NOTICE, "CONNECT RESET: %d\n", sqlca.sqlcode);
+    exit (8);
+  }
+
+  syslog (LOG_NOTICE, "db2daemon terminated.");
+  closelog();
+
+  return EXIT_SUCCESS;
+} /* main */
+
+/* --- eof db2lock1.c ----------------------------------------- */
