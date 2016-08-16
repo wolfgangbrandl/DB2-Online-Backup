@@ -9,13 +9,15 @@ CFLAGS 		= 	-g -w
 LIBDIR 		= 	-L$(DB2INSTANCEPATH)/sqllib/lib -ldb2
 INCLUDE 	= 	-I$(DB2INSTANCEPATH)/sqllib/include
 OBJ		=	db2snap.o
+REPLVER		:=	$(shell date +%y%m%d%H%M%S)
 
 .SUFFIXES:  $(.SUFFIXES) .o .c .sqc
 %.o:	%.c
 	$(CC) $(CFLAGS) $(INCLUDE) -c $<
 %.c:	%.sqc
+	echo $(REPLVER)
 	db2 connect to $(DATASOURCE)
-	db2 prep $< bindfile
+	db2 prep $< bindfile VERSION $(REPLVER)
 	db2 bind $*.bnd
 	cp $@ $@.tmp
 
