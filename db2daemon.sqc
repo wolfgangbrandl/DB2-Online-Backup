@@ -1,6 +1,6 @@
 /* ------------------------------------------------------------ */
-/* db2-connect-memory-test: Bratengeyer Mathias                 */
-/* Software Daten Service, Vienna. 1999-10-12                   */
+/* db2-daemon to fill table: Wolfgang Brandl                    */
+/* Date: 16-09-2016                                             */
 /* ------------------------------------------------------------ */
 #include <stdio.h>
 #include <stdlib.h>
