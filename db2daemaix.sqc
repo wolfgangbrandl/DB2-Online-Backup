@@ -1,0 +1,257 @@
+/* ------------------------------------------------------------ */
+/* db2-connect-memory-test: Brandl Wolfgang                     */
+/* Bundesrechenzentrum,    Vienna. 2016-09-08                   */
+/* ------------------------------------------------------------ */
+#include <stdio.h>
+#include <fcntl.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <signal.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sqlca.h>
+#include <string.h>
+#include <time.h>
+
+#include <sql.h>
+
+EXEC SQL BEGIN DECLARE SECTION;
+    char dbase [17];
+    short pid;
+    char str[35];
+EXEC SQL END DECLARE SECTION;
+
+static FILE* pfFile = (FILE*) -1;
+
+EXEC SQL INCLUDE SQLCA;
+const char * astroobjectslist[] = {
+"Mond",
+"Merkur",
+"Venus",
+"Erde",
+"Mars",
+"Jupiter",
+"Saturn",
+"Uranus",
+"Neptun",
+"Pluto",
+"Deneb",
+"Rigel",
+"Betelgeuse",
+"Beta Crucis",
+"Antares",
+"Beta Centauri",
+"Alpha Crucis",
+"Spica",
+"Canopus",
+"Achenar",
+"Capella",
+"Arcturus",
+"Aldebaran",
+"Vega",
+"Pollux",
+"Sirius",
+"Formalhaut",
+"Altair",
+"Procyon",
+"Alpha Centauri",
+"Sirius",
+"Procyon",
+"Alpha Centauri",
+"Epsilon Eridani",
+"Epsilon Indi",
+"61 Cygni",
+"Lalande 21135",
+"Sigma 2398",
+""
+};
+
+/* ------------------------------------------------------------ */
+static void skeleton_daemon()
+{
+  pid_t pid;
+  int 		hf;
+
+  /* Fork off the parent process */
+  pid = fork();
+
+  /* An error occurred */
+  if (pid < 0)
+    exit(EXIT_FAILURE);
+
+  /* Success: Let the parent terminate */
+  if (pid > 0)
+    exit(EXIT_SUCCESS);
+
+  /* On success: The child process becomes session leader */
+  if (setsid() < 0)
+    exit(EXIT_FAILURE);
+
+  /* Catch, ignore and handle signals */
+  //TODO: Implement a working signal handler */
+  signal(SIGCHLD, SIG_IGN);
+  signal(SIGHUP, SIG_IGN);
+
+  /* Fork off for the second time*/
+  pid = fork();
+
+  /* An error occurred */
+  if (pid < 0)
+    exit(EXIT_FAILURE);
+
+  /* Success: Let the parent terminate */
+  if (pid > 0)
+    exit(EXIT_SUCCESS);
+
+  /* Set new file permissions */
+  umask(0);
+
+  /* Change the working directory to the root directory */
+  /* or another appropriated directory */
+  chdir("./.");
+
+  /* Close all open file descriptors */
+  int x;
+  for (x = sysconf(_SC_OPEN_MAX); x>0; x--)
+  {
+        close (x);
+  }
+
+  /* Open the log file */
+  if (pfFile == (FILE*) -1){
+    hf = open("./db2daemon.trc", O_CREAT | O_APPEND | O_NONBLOCK | O_RDWR , S_IRWXU | S_IRWXG | S_IRWXO);
+    if (hf == -1){
+      printf("Cannot open trace file db2daemon.trc\n");
+      exit (8);
+    } else {
+      pfFile = fdopen(hf, "w");
+      if (!pfFile){
+        printf("Cannot open trace file db2daemon.trc\n");
+        exit (8);
+      }
+    }
+  }
+}
+/* ------------------------------------------------------------ */
+static void CloseXTrace ()
+{
+  fflush(pfFile);
+  close (pfFile);
+}
+/* ------------------------------------------------------------ */
+static void XTrace (const char * buffer)
+{
+  if (pfFile != (FILE *) 0 && pfFile != (FILE *) -1) {
+    fwrite(buffer, strlen(buffer), 1, pfFile);
+    fflush(pfFile);
+  } /* if */
+
+}
+
+/* ------------------------------------------------------------ */
+int main (const int iArgs, const char * ppszArgs[])
+{
+  int         j=0x00;
+  int         i=0x00;
+  int         ind=0x00;
+  int         count=0x00;
+  char      * db=0x00;
+  char      * user=0x00;
+  char      * pw=0x00;
+  char        buffer[3000];
+
+  if (iArgs < 2) {
+    printf("db2daemon <database name>\n");
+    exit (8);
+  } else {
+    strcpy (dbase  , (iArgs > 1) ? ppszArgs[1] : "");
+  }
+  skeleton_daemon();
+  sprintf(buffer,"First daemon started.");
+  XTrace (buffer);
+  pid = getpid();
+  sprintf(buffer,"Connect");
+  XTrace (buffer);
+  EXEC SQL CONNECT TO :dbase;
+  if (sqlca.sqlcode) {
+    sprintf(buffer,"CONNECT: %d\n", sqlca.sqlcode);
+    XTrace (buffer);
+    exit (8);
+  }
+
+  while (1) {
+    sprintf(buffer,"Insert Commited rows");
+    XTrace (buffer);
+    count = 0;
+    while (strlen(astroobjectslist[count]) > 0) {
+      strcpy(str,astroobjectslist[count]);
+      sprintf(buffer,"Insert %s\n",astroobjectslist[count]);
+      XTrace (buffer);
+      EXEC SQL INSERT INTO ASTRO (PID,OBJECT) VALUES (:pid,:str);
+      if (sqlca.sqlcode){
+        sprintf(buffer,"INSERT: %d\n", sqlca.sqlcode);
+        XTrace (buffer);
+        sprintf(buffer,"Rollback");
+        XTrace (buffer);
+        EXEC SQL rollback work;
+        sprintf(buffer,"DisConnect");
+        XTrace (buffer);
+        EXEC SQL CONNECT RESET;
+        exit (8);
+      }
+      count++;
+    }
+    EXEC SQL DECLARE c1 CURSOR FOR SELECT OBJECT FROM DB2IT99.ASTRO ;
+    if (sqlca.sqlcode){
+      sprintf(buffer,"Declare Cursor: %d\n", sqlca.sqlcode);
+      XTrace (buffer);
+    }
+    sprintf(buffer,"Open Cursor");
+    XTrace (buffer);
+    EXEC SQL OPEN c1;
+    if (sqlca.sqlcode){
+      sprintf(buffer,"Open Cursor: %d\n", sqlca.sqlcode);
+      XTrace (buffer);
+    }
+  
+    for (i=0;i<10;i++) {
+      memset (str,0x00,sizeof(str));
+      EXEC SQL FETCH c1 INTO :str;
+      if (sqlca.sqlcode){
+        sprintf(buffer,"Fetch Cursor: %d\n", sqlca.sqlcode);
+        XTrace (buffer);
+        break;
+      } else {
+        sprintf(buffer,"Row <%d>: %s\n",i,str);
+        XTrace (buffer);
+      }
+    }
+  
+    sprintf(buffer,"Close Cursor");
+    XTrace (buffer);
+    EXEC SQL CLOSE c1;
+
+  
+    sprintf(buffer,"Commit");
+    XTrace (buffer);
+    EXEC SQL commit work;
+    sleep (5);
+
+  }
+  sprintf(buffer,"DisConnect");
+  XTrace (buffer);
+  EXEC SQL CONNECT RESET;
+  if (sqlca.sqlcode != 0) {
+    sprintf(buffer,"CONNECT RESET: %d\n", sqlca.sqlcode);
+    XTrace (buffer);
+    exit (8);
+  }
+
+  sprintf(buffer,"db2daemon terminated.");
+  XTrace (buffer);
+  CloseXTrace();
+
+  return EXIT_SUCCESS;
+} /* main */
+
+/* --- eof db2lock1.c ----------------------------------------- */

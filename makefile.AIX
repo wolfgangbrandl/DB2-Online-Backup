@@ -1,0 +1,113 @@
+CC 		= 	/usr/bin/gcc
+CC2		= 	/usr/bin/gcc
+DATASOURCE      =       DBTEST
+DB2INSTANCEPATH =       /home/$(DB2INSTANCE)
+DBPATH		=	/node1/data0/db2/S2T01/$(DATASOURCE)/data
+DBLOGPATH	=	/node1/logs/db2/S2T00/$(DATASOURCE)/log
+DBARCHIVELOG	=	/node1/logs/db2/S2T00/$(DATASOURCE)/archivelog
+BACKUPDIR       =       /backup/db2
+CFLAGS 		= 	-g -w 
+LIBDIR 		= 	-L$(DB2INSTANCEPATH)/sqllib/lib -ldb2
+INCLUDE 	= 	-I$(DB2INSTANCEPATH)/sqllib/include
+OBJ		=	db2daemaix.o
+REPLVER		:=	$(shell date +%y%m%d%H%M%S)
+SHELL		=	/usr/bin/bash
+
+.SUFFIXES:  .c .sqc
+.sqc.c:
+	db2 connect to $(DATASOURCE)
+	db2 prep $> bindfile EXPLAIN YES
+	db2 bind $*.bnd EXPLAIN YES
+	cp $@ $@.tmp
+
+all : db2daemaix
+db2daemon.c:	db2daemaix.sqc
+db2daemon:	db2daemaix.c
+	$(CC) $(CFLAGS) $(INCLUDE) $(LIBDIR) -o $@ $>
+createdb:
+		rm -rf $(DBPATH)
+		mkdir -p $(DBPATH)
+		db2 create database $(DATASOURCE) on $(DBPATH)
+		rm -rf $(DBLOGPATH)
+		mkdir -p $(DBLOGPATH)
+		db2 update database configuration for $(DATASOURCE) using NEWLOGPATH $(DBLOGPATH)
+		rm -rf $(DBARCHIVELOG)
+		mkdir -p $(DBARCHIVELOG)
+		db2 update database configuration for $(DATASOURCE) using LOGARCHMETH1 'DISK:$(DBARCHIVELOG)'
+		rm -rf $(HOME)/backup/$(DATASOURCE)
+		mkdir -p $(HOME)/backup/$(DATASOURCE)
+		db2 backup database DBTEST to $(BACKUPDIR)/$(DATASOURCE) compress
+		db2 backup database $(DATASOURCE) online to $(BACKUPDIR)/$(DATASOURCE) compress include logs
+savelog:
+		mkdir -p ./log/sav
+		cp -R $(DBLOGPATH) ./log/sav
+dropdb:
+		db2 drop database $(DATASOURCE)
+createtable:
+		db2 connect to $(DATASOURCE) 
+		db2 "create table TEST.T000001 (\
+			ind integer not null generated always as identity (start with 1 increment by 1),\
+			pid integer not null default 1,\
+			date date not null default current date,\
+			time time not null default current time,\
+			object varchar(255) ,\
+			primary key (ind))"
+		db2 "CREATE INDEX TEST.I0100001 ON TEST.T000001 (ind ASC,object ASC) COMPRESS NO INCLUDE NULL KEYS ALLOW REVERSE SCANS;
+
+		db2 "create alias DB2IT99.ASTRO for TEST.T000001"
+		db2 terminate
+getenvironment:
+		db2level
+		cat /etc/system-release
+getdbpath:
+		db2 connect to $(DATASOURCE) 
+		db2 "SELECT * FROM SYSIBMADM.DBPATHS"
+		export LOGPATH=`db2 -x "select substr(type,1,30),substr(path,1,70) from SYSIBMADM.DBPATHS"|grep LOGPATH|awk '{print $2}'`
+		echo "hallo" $(LOGPATH)
+		db2 terminate
+snap:
+		rm -rf .sav/*
+		rm -f pathout2 pathout snap.bash resnap.bash a.test
+		db2 connect to $(DATASOURCE) 
+		db2 -z pathout -x "select * from SYSIBMADM.DBPATHS"
+		grep -v MEMBER pathout > pathout2
+		grep -v LOGPATH pathout2 > pathout3
+		awk '{print "mkdir -p ./sav/"$$2";cp -R",$$3"* ./sav/"$$2}' pathout3 > snap.bash
+		awk '{print "mkdir -p",$$3";cp -R ./sav/"$$2"/*",$$3}' pathout3 > resnap.bash
+		db2 set write suspend for database exclude logs
+		db2 terminate
+		chmod a+rx snap.bash resnap.bash
+		bash ./snap.bash
+		mkdir -p ./log/snap
+		cp -R $(DBLOGPATH)/* ./log/snap
+#		db2 set write resume for database
+resnap:
+		bash ./resnap.bash
+postsnap:
+		db2 catalog database $(DATASOURCE) on $(DBPATH)
+		cp $(DBARCHIVELOG)/db2it99/DBTEST/NODE0000/LOGSTREAM0000/C0000000/* $(DBLOGPATH)/NODE0000/LOGSTREAM0000
+		cp -R ./log/sav/$(DATASOURCE)/* $(DBLOGPATH)
+		db2 restart database $(DATASOURCE) write resume
+#		db2inidb $(DATASOURCE) as snapshot
+rebuilddb:	savelog dropdb resnap postsnap
+
+droptable:
+		db2 connect to $(DATASOURCE) 
+		db2 "drop table db2it99.astro"
+		db2 terminate
+reorgrunstat:
+		db2 connect to $(DATASOURCE) 
+		db2 "reorg table db2it99.astro"
+		db2 "runstats on table db2it99.astro"
+		db2 terminate
+
+emptytable:
+		db2 connect to $(DATASOURCE) 
+		db2 "delete from db2it99.astro"
+		db2 terminate
+initdb:		dropdb createdb createtable filltable1
+
+clean:
+	rm -f *.c.c *.i *.o *.bnd *.tmp $(OBJ) db2daemon db2daemon.c
+	rm -rf ./sav ./log
+	rm -f pathout2 pathout snap.bash resnap.bash a.test
